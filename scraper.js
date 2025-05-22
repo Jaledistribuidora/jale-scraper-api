@@ -1,28 +1,36 @@
 
-const axios = require('axios');
-const cheerio = require('cheerio');
-
-const JALE_URL = 'https://www.jaledistribuidora.com.br';
+const puppeteer = require('puppeteer');
 
 async function buscarProdutos(busca) {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox']
+  });
+  const page = await browser.newPage();
+  const produtos = [];
+
   try {
-    const response = await axios.get(`${JALE_URL}/buscar?q=${encodeURIComponent(busca)}`);
-    const $ = cheerio.load(response.data);
-    const produtos = [];
+    const searchUrl = `https://www.jaledistribuidora.com.br/buscar?q=${encodeURIComponent(busca)}`;
+    await page.goto(searchUrl, { waitUntil: 'networkidle2' });
 
-    $('.product-box').each((i, el) => {
-      const nome = $(el).find('.product-title').text().trim();
-      const preco = $(el).find('.price').text().trim();
-      const sku = $(el).attr('data-sku') || 'N/A';
+    await page.waitForSelector('.listagem .item'); // ajuste baseado no HTML real
 
-      produtos.push({ nome, preco, sku });
+    const resultados = await page.$$eval('.listagem .item', itens => {
+      return itens.map(item => {
+        const nome = item.querySelector('.nome-produto')?.innerText || 'N/A';
+        const preco = item.querySelector('.preco-produto')?.innerText || 'N/A';
+        return { nome, preco };
+      });
     });
 
-    return produtos;
+    produtos.push(...resultados);
   } catch (error) {
-    console.error('Erro no scraping:', error.message);
-    return [];
+    console.error('Erro no scraping com Puppeteer:', error.message);
+  } finally {
+    await browser.close();
   }
+
+  return produtos;
 }
 
 module.exports = { buscarProdutos };
